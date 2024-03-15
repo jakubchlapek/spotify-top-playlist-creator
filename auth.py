@@ -2,12 +2,10 @@ import os
 import requests
 import urllib.parse
 from datetime import datetime
-from flask import Flask, redirect, request, jsonify, session
-from dotenv import load_dotenv
-
-load_dotenv()
+from flask import Flask, redirect, request, jsonify, session, render_template
 
 # Load environment variables
+SONG_LIMIT = 20
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 REDIRECT_URI = os.getenv("REDIRECT_URI")
@@ -54,12 +52,37 @@ def get_token(grant_type: str, code: str = None, refresh_token: str = None):
     
     return redirect('/tracks')     
 
-@app.route('/')
-def index():
-    return "Welcome to the Top Songs Spotify Playlist Generator! <a href='/login'>Login with Spotify</a>"
 
-@app.route('/login')
-def login():
+def get_user_data(data_url: str = API_BASE_URL + "/tracks"):
+    """
+        Get the user's saved songs data from the Spotify API
+    
+    Args:
+        data_url (str): The URL for the user's saved songs data API endpoint
+
+    Returns:
+        response object: The user's saved songs data
+    """
+    headers = {
+        'Authorization': f"Bearer {session['access_token']}"
+    }
+
+    response = requests.get(data_url, headers=headers)
+    
+    if response.status_code == 200:
+        playlists = response.json()
+        return jsonify(playlists)
+    else:
+        return jsonify({"error": "Failed to fetch data"})
+    
+
+def get_auth():
+    """
+        Redirects to the Spotify login page to authorize the app
+
+    Returns:
+        redirect: Redirects to the Spotify login page    
+    """
     # Define the permission scopes for the Spotify API
     scope = 'user-library-read playlist-modify-private playlist-modify-public'
 
@@ -75,6 +98,33 @@ def login():
 
     return redirect(auth_url)
 
+def get_top_songs():
+    """
+        Get the user's top songs from the Spotify API up to the SONG_LIMIT constant
+    
+    Returns:
+        list: List containing 2-element tuples of the song name and song ID
+    """
+    top_songs = []
+    user_data = get_user_data()
+
+    while len(top_songs) < SONG_LIMIT and user_data:
+        top_songs.extend(user_data.get_json()['items'])
+        user_data = get_user_data(data_url=user_data.get_json().get('next'))
+    
+    song_ids = [(song['track']['name'], song['track']['id']) for song in top_songs]
+    return song_ids
+
+@app.route('/')
+def index():
+    return "Welcome to the Top Songs Spotify Playlist Generator! <a href='/login'>Login with Spotify</a>"
+
+
+@app.route('/login')
+def login():
+    return get_auth()
+
+
 @app.route('/callback')
 def callback():
     if 'error' in request.args:
@@ -83,6 +133,7 @@ def callback():
     if 'code' in request.args:
         return get_token(grant_type='authorization_code', code=request.args['code'])
 
+
 @app.route('/tracks')
 def tracks():
     if 'access_token' not in session:
@@ -90,15 +141,9 @@ def tracks():
     
     if datetime.now().timestamp() > session['expires_at']:
         return redirect('/refresh_token')
+
+    return f"Welcome to the tracks section!\nYour top {SONG_LIMIT} songs are: \n\n{[str(song[0]) for song in get_top_songs()]}"
     
-    headers = {
-        'Authorization': f"Bearer {session['access_token']}"
-    }
-
-    response = requests.get(API_BASE_URL + "/tracks", headers=headers)
-    playlists = response.json()
-
-    return jsonify(playlists)
 
 @app.route('/refresh_token')
 def refresh_token():

@@ -1,2 +1,3 @@
 .env
 __pycache__/auth.cpython-312.pyc
+*.pyc
