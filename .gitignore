@@ -1,3 +1,4 @@
 .env
 __pycache__/auth.cpython-312.pyc
 *.pyc
+playlist_data.txt
