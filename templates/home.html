@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Home Page{% endblock %}
+{% block header %}Welcome to the home section!{% endblock %}
+{% block content %}
+<form action="#" method="post">
+    <label for="SONG_LIMIT">How many songs would you like in your playlist?</label><br>
+    <input type="number" id="SONG_LIMIT" name="SONG_LIMIT" min="1" max="500" required>
+    <input type="submit" value="Submit">
+</form>
+
+<div class="chosen-songs">
+    <h3>Chosen number of songs:</h3>
+    <p>{{ SONG_LIMIT }}</p>
+</div>
+
+<div class="main-buttons">
+<a href='/create_playlist'>Create a playlist</a><br>
+<a href='/update_playlist'>Update a playlist</a><br>
+<a href='/delete_playlist'>Delete a playlist</a><br><br>
+</div>
+
+<div class="top-songs-list">
+    <h3>Your top songs are:</h3>
+    <ol>
+        {% for song in song_list %}
+        <li>{{ '{} — {}'.format(song[0], song[1]) }}</li>
+        {% endfor %}
+    </ol>
+</div>
+{% endblock %}

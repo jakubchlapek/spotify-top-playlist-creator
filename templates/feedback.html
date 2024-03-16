@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Feedback Page{% endblock %}
+{% block header %}Welcome to the Spotify Top Playlist Manager!{% endblock %}
+{% block content %}
+    {% for message in feedback %}
+        {{ message }}<br>
+    {% endfor %}
+    <br>
+    {% if playlist_id %}
+        Playlist ID: {{ playlist_id }}<br><br>
+    {% endif %}
+    <a href='/home'>Back to home page</a><br>
+{% endblock %}
