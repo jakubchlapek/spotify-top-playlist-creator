@@ -5,7 +5,6 @@ from datetime import datetime
 from flask import Flask, redirect, request, jsonify, session, render_template
 
 # Load environment variables
-SONG_LIMIT = 20
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 REDIRECT_URI = os.getenv("REDIRECT_URI")
@@ -30,7 +29,7 @@ def get_token(grant_type: str, code: str = None, refresh_token: str = None):
         refresh_token (str): The refresh token
 
     Returns:
-        redirect: Redirects to the /tracks route
+        redirect: Redirects to the /home route
     """
     req_body = {
             'code': code,
@@ -52,7 +51,7 @@ def get_token(grant_type: str, code: str = None, refresh_token: str = None):
     # Calculate the expiration time of the access token
     session['expires_at'] = datetime.now().timestamp() + token_info['expires_in']
     
-    return redirect('/tracks')     
+    return redirect('/home/20')     
 
 
 def get_user_data(data_url: str = API_BASE_URL + "/me/tracks"):
@@ -65,7 +64,7 @@ def get_user_data(data_url: str = API_BASE_URL + "/me/tracks"):
     Returns:
         response object: The user's saved songs data
     """
-    headers = {'Authorization': f"Bearer {session['access_token']}"}
+    headers = generate_headers()
     response = requests.get(data_url, headers=headers)
     
     if response.status_code == 200:
@@ -98,30 +97,59 @@ def get_auth():
     return redirect(auth_url)
 
 
-def get_top_songs():
+def get_top_songs_data():
     """
         Get the user's top songs from the Spotify API up to the SONG_LIMIT constant
     
     Returns:
-        list: List containing 2-element tuples of the song name and song ID
+        list: The user's top songs data
     """
     top_songs = []
     user_data = get_user_data()
     top_songs.extend(user_data.get_json()['items'])
 
-    while len(top_songs) < SONG_LIMIT and user_data:
+    # Get the user's top songs, it goes in multiples of 20
+    while len(top_songs) < SONG_LIMIT and user_data.get_json().get('next'):
         user_data = get_user_data(data_url=user_data.get_json().get('next'))
         top_songs.extend(user_data.get_json()['items'])
 
-    song_ids = [(song['track']['name'], song['track']['id']) for song in top_songs]
+    return top_songs
+
+
+def get_top_song_ids():
+    """
+    Get the user's top song ids up to the SONG_LIMIT constant
+    
+    Returns:
+        list: List containing top song IDs
+    """
+    top_songs = get_top_songs_data()
+    # Define the top cutoff limit (if the user wants more songs than he has saved)
+    top_limit = SONG_LIMIT if len(top_songs) >= SONG_LIMIT else len(top_songs)
+    song_ids = [(song['track']['id']) for song in top_songs][:top_limit]
     return song_ids
+
+
+def get_top_song_details():
+    """
+    Get the user's top song and artist names up to the SONG_LIMIT constant
+    
+    Returns:
+        list: List containing a 2-element tuple with the song and artist name
+    """
+    top_songs = get_top_songs_data()
+    # Define the top cutoff limit (if the user wants more songs than he has saved)
+    top_limit = SONG_LIMIT if len(top_songs) >= SONG_LIMIT else len(top_songs)
+    song_details = [(song['track']['name'], song['track']['artists'][0]['name']) for song in top_songs][:top_limit]
+    return song_details
+
 
 def get_playlist_tracks():
     """
         Get the tracks from the user's playlist.
     
     Returns:
-        list: List containing 2-element tuples of the playlist name and playlist ID
+        list: List containing playlist IDs
     """
     playlist_id = find_playlist()
     response = get_user_data(data_url=API_BASE_URL + f"/playlists/{playlist_id}/tracks")
@@ -133,7 +161,7 @@ def get_playlist_tracks():
         response = get_user_data(data_url=response.get_json().get('next'))
         songs_list.extend(response.get_json()['items'])
 
-    song_ids = [(song['track']['name'], song['track']['id']) for song in songs_list]
+    song_ids = [(song['track']['id']) for song in songs_list]
     return song_ids
 
 
@@ -177,6 +205,9 @@ def find_playlist():
     return None
     
 
+def generate_headers():
+    return {'Authorization': f"Bearer {session['access_token']}"}
+
 def chunks(lst):
     """
     Yield successive n-sized chunks from lst. 
@@ -189,6 +220,83 @@ def chunks(lst):
     """
     for i in range(0, len(lst), 100):
         yield lst[i:i + 100]
+
+
+def create():
+    """
+        Create a playlist with the user's top songs and save the playlist ID, song number to a file in the working directory
+
+    Returns:
+        str: A message indicating whether the playlist was created successfully or if it already exists
+    """
+    headers = generate_headers()
+    playlist_id = find_playlist()
+    if playlist_id:
+        try:
+            requests.put(f"{API_BASE_URL}/playlists/{playlist_id}/followers", headers=headers)
+        except:
+            pass
+        return f"You have already created a playlist with your top {SONG_LIMIT} songs. The playlist ID is: {playlist_id}.<br>"
+    with open('playlist_data.txt', 'a') as f:
+        playlist_name = f"Top {SONG_LIMIT} Songs"
+        response = requests.post(f"{API_BASE_URL}/me/playlists", headers=headers, json={"name": playlist_name, "public": False})
+        new_playlist_id = response.json()['id']
+        f.write(f"{new_playlist_id},{SONG_LIMIT}")
+    return f"Playlist created successfully! The playlist ID is: {new_playlist_id}.<br>"
+
+
+def update():
+    """
+        Update the playlist corresponding to the song number with the user's top songs
+        
+    Returns:
+        str: A message indicating whether the playlist was updated successfully or if it does not exist
+    """
+    playlist_id = find_playlist()
+    if playlist_id:
+        headers = generate_headers()
+        # Split the playlist into chunks of 100 and then clear the playlist
+        # (You can only add/remove 100 songs at a time from a playlist in Spotify) 
+        playlist_song_ids = get_playlist_tracks()
+        for chunk in chunks(playlist_song_ids):
+            response = requests.delete(f"{API_BASE_URL}/playlists/{playlist_id}/tracks", headers=headers, json={"tracks": [{"uri": f"spotify:track:{song}"} for song in chunk]})
+        # Add the user's top songs to the playlist
+        top_song_ids = get_top_song_ids()
+        # Split the song IDs into chunks of 100 
+        for chunk in chunks(top_song_ids):
+            response = requests.post(f"{API_BASE_URL}/playlists/{playlist_id}/tracks", headers=headers, json={"uris": [f"spotify:track:{song}" for song in chunk]})
+        if response.status_code in [200, 201]:
+            return f"Playlist updated successfully! The playlist ID is: {playlist_id}.<br>"
+        return f"Failed to update the playlist. The playlist ID is: {playlist_id}.<br>"
+    return "No playlist found. Please create a playlist first.<br>"
+
+
+def delete():
+    """
+        Delete the playlist corresponding to the song number
+
+    Returns:
+        str: A message indicating whether the playlist was deleted successfully or if it does not exist
+    """
+    playlist_id = find_playlist()
+    if playlist_id:
+        headers = generate_headers()
+        # There is not delete method for playlists in the Spotify API, so we have to unfollow the playlist
+        response = requests.delete(f"{API_BASE_URL}/playlists/{playlist_id}/followers", headers=headers)
+        if response.status_code == 200:
+            return "Playlist deleted successfully!.<br>"
+        return response.json()
+    return "No playlist found. Please create a playlist first.<br>"
+
+
+def return_home():
+    """
+        Return to the home page
+
+    Returns:
+        str: A link to the home page
+    """
+    return "<a href='/home/20'>Back to home page</a><br>"
 
 
 @app.route('/')
@@ -210,13 +318,17 @@ def callback():
         return get_token(grant_type='authorization_code', code=request.args['code'])
 
 
-@app.route('/tracks')
-def tracks():
+@app.route('/home/<songs_requested>')
+def home(songs_requested: int = 20):
+    global SONG_LIMIT
+    SONG_LIMIT = int(songs_requested)
     check_token_validity()
-    return f"""Welcome to the tracks section!\nYour top {SONG_LIMIT} songs are: \n\n{[str(song[0]) for song in get_top_songs()]}\n 
-            <a href='/create_playlist'>Create a playlist</a>
-            <a href='/update_playlist'>Update a playlist</a>
-            <a href='/delete_playlist'>Delete a playlist</a>"""
+    return f"""<h2>Welcome to the home section!</h2>
+            Edit the number in the website address and reload the site to choose how many songs you want in the playlist!<br><br>
+            <a href='/create_playlist'>Create a playlist</a><br>
+            <a href='/update_playlist'>Update a playlist</a><br>
+            <a href='/delete_playlist'>Delete a playlist</a><br><br>
+            Your top {SONG_LIMIT} songs are: <br><br>{'<br>'.join('{} by {}'.format(song[0], song[1]) for song in get_top_song_details())}"""
     
 
 @app.route('/refresh_token')
@@ -227,53 +339,17 @@ def refresh_token():
 @app.route('/create_playlist')
 def create_playlist():
     check_token_validity()
-    headers = {'Authorization': f"Bearer {session['access_token']}"}
-    playlist_id = find_playlist()
-    if playlist_id:
-        try:
-            requests.put(f"{API_BASE_URL}/playlists/{playlist_id}/followers", headers=headers)
-        except:
-            pass
-        return f"You have already created a playlist with your top {SONG_LIMIT} songs. The playlist ID is: {playlist_id}"
-    with open('playlist_data.txt', 'a') as f:
-        playlist_name = f"Top {SONG_LIMIT} Songs"
-        response = requests.post(f"{API_BASE_URL}/me/playlists", headers=headers, json={"name": playlist_name, "public": False})
-        new_playlist_id = response.json()['id']
-        f.write(f"{new_playlist_id},{SONG_LIMIT}\n")
-    return f"Playlist created successfully! The playlist ID is: {new_playlist_id}"
+    return create() + update() + return_home()
 
 
 @app.route('/update_playlist')
 def update_playlist():
     check_token_validity()
-    playlist_id = find_playlist()
-    if playlist_id:
-        headers = {'Authorization': f"Bearer {session['access_token']}"}
-        # Split the playlist into chunks of 100 and then clear the playlist
-        # (You can only add/remove 100 songs at a time from a playlist in Spotify) 
-        playlist_song_ids = get_playlist_tracks()
-        for chunk in chunks(playlist_song_ids):
-            response = requests.delete(f"{API_BASE_URL}/playlists/{playlist_id}/tracks", headers=headers, json={"tracks": [{"uri": f"spotify:track:{song[1]}"} for song in chunk]})
-        # Add the user's top songs to the playlist
-        top_song_ids = get_top_songs()
-        # Split the song IDs into chunks of 100 
-        for chunk in chunks(top_song_ids):
-            response = requests.post(f"{API_BASE_URL}/playlists/{playlist_id}/tracks", headers=headers, json={"uris": [f"spotify:track:{song[1]}" for song in chunk]})
-        if response.status_code in [200, 201]:
-            return f"Playlist updated successfully! The playlist ID is: {playlist_id}"
-        return response.json()
-    return "No playlist found. Please create a playlist first."
+    return update() + return_home()
+
 
 @app.route('/delete_playlist')
 def delete_playlist():
     check_token_validity()
-    playlist_id = find_playlist()
-    if playlist_id:
-        headers = {'Authorization': f"Bearer {session['access_token']}"}
-        # There is not delete method for playlists in the Spotify API, so we have to unfollow the playlist
-        response = requests.delete(f"{API_BASE_URL}/playlists/{playlist_id}/followers", headers=headers)
-        if response.status_code == 200:
-            return "Playlist deleted successfully!"
-        return response.json()
-    return "No playlist found. Please create a playlist first."
+    return delete() + return_home()
         
