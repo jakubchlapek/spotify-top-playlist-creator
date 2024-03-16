@@ -241,7 +241,7 @@ def create():
         playlist_name = f"Top {SONG_LIMIT} Songs"
         response = requests.post(f"{API_BASE_URL}/me/playlists", headers=headers, json={"name": playlist_name, "public": False})
         new_playlist_id = response.json()['id']
-        f.write(f"{new_playlist_id},{SONG_LIMIT}")
+        f.write(f"{new_playlist_id},{SONG_LIMIT}\n")
     return f"Playlist created successfully! The playlist ID is: {new_playlist_id}.<br>"
 
 
@@ -296,7 +296,7 @@ def return_home():
     Returns:
         str: A link to the home page
     """
-    return "<a href='/home/20'>Back to home page</a><br>"
+    return f"<a href='/home/{SONG_LIMIT}'>Back to home page</a><br>"
 
 
 @app.route('/')
