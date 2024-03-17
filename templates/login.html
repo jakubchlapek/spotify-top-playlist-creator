@@ -1,6 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Login Page{% endblock %}
-{% block header %}Welcome to the Spotify Top Playlist Manager!{% endblock %}
+{% block navbar %}
+  <nav class="navbar navbar-expand-lg navbar-dark bg-success">
+    <a class="navbar-brand" href="/">Spotify Top Saved Songs Manager</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+  
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav mr-auto">
+        <a class="nav-item nav-link disabled" href="/home">Home <span class="sr-only">(current)</span></a>
+        <a class="nav-item nav-link disabled" href="/create_playlist">Create</a>
+        <a class="nav-item nav-link disabled" href="/update_playlist">Update</a>
+        <a class="nav-item nav-link disabled" href="/delete_playlist">Delete</a>
+      </ul>
+    </div>
+  </nav>
+{% endblock %}
+{% block header %}<div class="text-center my-2">Welcome to the Spotify Top Playlist Manager!</div>{% endblock %}
 {% block content %}
-<a href="{{ url_for('login') }}">Login with Spotify</a>
+<div class="text-center">
+    <a class="btn btn-success btn-lg my-2" role="button" href="/login">Login with Spotify</a>
+</div>
 {% endblock %}

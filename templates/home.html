@@ -1,24 +1,43 @@
 {% extends "base.html" %}
 {% block title %}Home Page{% endblock %}
-{% block header %}Welcome to the home section, {{user_name}}!{% endblock %}
+{% block navbar %}
+  <nav class="navbar navbar-expand-lg navbar-dark bg-success">
+    <a class="navbar-brand" href="/">Spotify Top Saved Songs Manager</a>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+  
+    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+      <ul class="navbar-nav mr-auto">
+        <a class="nav-item nav-link active" href="/home">Home <span class="sr-only">(current)</span></a>
+        <a class="nav-item nav-link active" href="/create_playlist">Create</a>
+        <a class="nav-item nav-link active" href="/update_playlist">Update</a>
+        <a class="nav-item nav-link active" href="/delete_playlist">Delete</a>
+      </ul>
+    </div>
+  </nav>
+{% endblock %}
+{% block header %}<div class="my-2">Welcome to the home section, {{user_name}}!</div>{% endblock %}
 {% block content %}
+
 <form action="#" method="post">
     <label for="SONG_LIMIT">How many songs would you like in your playlist?</label><br>
-    <input type="number" id="SONG_LIMIT" name="SONG_LIMIT" min="1" max="500" required>
-    <input type="submit" value="Submit">
+    <div class="input-group mb-3">
+        <input type="number" class="form-control" name="SONG_LIMIT" placeholder="Input song amount" aria-label="Song amount" 
+            aria-describedby="basic-addon1" required min="1" max="1000">
+        <input type="submit" value="Submit">
+    </div>
 </form>
-
 <div class="chosen-songs">
-    <h3>Chosen number of songs:</h3>
-    <p>{{ SONG_LIMIT }}</p>
+    <h3>Chosen number of songs: {{ SONG_LIMIT }} </h3>
 </div>
-
-<div class="main-buttons">
-<a href='/create_playlist'>Create a playlist</a><br>
-<a href='/update_playlist'>Update a playlist</a><br>
-<a href='/delete_playlist'>Delete a playlist</a><br>
+<br>
+<div class="btn-group-vertical">
+    <a class="btn btn-success btn" role="button" href='/create_playlist'>Create a playlist</a>
+    <a class="btn btn-primary" role="button" href='/update_playlist'>Update a playlist</a>
+    <a class="btn btn-danger" role="button" href='/delete_playlist'>Delete a playlist</a>
 </div>
-
+<br><br>
 <div class="most-recent-songs-list">
     <h3>Your most recent songs are:</h3>
     <ol>
