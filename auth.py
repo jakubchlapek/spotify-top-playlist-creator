@@ -1,8 +1,15 @@
+from app import app
+from db import db, users, playlists
 import os
 import requests
 import urllib.parse
 from datetime import datetime
-from flask import Flask, redirect, request, jsonify, session, render_template, url_for
+from flask import redirect, request, jsonify, session, render_template, url_for
+
+# TO DO:
+# - Fix the check_token_validity function, redirects don't work, because the function isn't being returned from the routes
+# - Make it so a user can't go into other routes without a valid access token
+# - Add some CSS to make the app look better
 
 # Load environment variables
 CLIENT_ID = os.getenv("CLIENT_ID")
@@ -13,9 +20,6 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTH_URL = 'https://accounts.spotify.com/authorize'
 TOKEN_URL = 'https://accounts.spotify.com/api/token'
 API_BASE_URL = 'https://api.spotify.com/v1'
-
-app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")
 
 def get_token(grant_type: str, code: str = None, refresh_token: str = None):
     """
@@ -168,6 +172,18 @@ def get_playlist_tracks():
     return song_ids
 
 
+def get_user_details():
+    """
+        Get the user's ID and name from the Spotify API
+    
+    Returns:
+        str: The user's ID and name
+    """
+    headers = generate_headers()
+    response = requests.get(f"{API_BASE_URL}/me", headers=headers)
+    return response.json()['id'], response.json()['display_name']
+
+
 def check_token_validity(called_by_refresh_route: bool = False):
     """
         Check if the access token is still valid. If not, redirect to the refresh token route. 
@@ -177,6 +193,7 @@ def check_token_validity(called_by_refresh_route: bool = False):
         redirect: Redirects to the refresh token route 
         response: Returns the new access token
     """
+    # not currently working
     if 'access_token' not in session:
         return redirect('/login')
     
@@ -197,21 +214,16 @@ def find_playlist():
     """
     if 'SONG_LIMIT' not in session:
         session['SONG_LIMIT'] = 20
-    try:
-        with open('playlist_data.txt', 'r+') as f:
-            playlist_data = f.readlines()
-            if playlist_data:
-                for line in playlist_data:
-                    playlist_id, song_count = line.split(',')
-                    if int(song_count) == session['SONG_LIMIT']:
-                        return playlist_id
-    except FileNotFoundError:
-        pass
-    return None
+    found_playlist = playlists.query.filter_by(spotify_id=session["user_id"], song_count=session['SONG_LIMIT']).first()
+    if found_playlist:
+        return found_playlist.playlist_id
+    else:
+        return None
     
 
 def generate_headers():
     return {'Authorization': f"Bearer {session['access_token']}"}
+
 
 def chunks(lst):
     """
@@ -245,12 +257,15 @@ def create():
         except:
             pass
         return f"You have already created a playlist with your top {session['SONG_LIMIT']} songs.", playlist_id
-    with open('playlist_data.txt', 'a') as f:
-        playlist_name = f"Top {session['SONG_LIMIT']} Songs"
-        response = requests.post(f"{API_BASE_URL}/me/playlists", headers=headers, json={"name": playlist_name, "public": False})
+    playlist_name = f"Top {session['SONG_LIMIT']} Songs"
+    response = requests.post(f"{API_BASE_URL}/me/playlists", headers=headers, json={"name": playlist_name, "public": False})
+    if response.status_code in [200,201]:
         new_playlist_id = response.json()['id']
-        f.write(f"{new_playlist_id},{session['SONG_LIMIT']}\n")
-    return f"Playlist created successfully!", new_playlist_id
+        new_playlist = playlists(spotify_id=session["user_id"], playlist_id=new_playlist_id, song_count=session['SONG_LIMIT'])
+        db.session.add(new_playlist)
+        db.session.commit()
+        return f"Playlist created successfully!", new_playlist_id
+    return f"Failed to create the playlist.", None
 
 
 def update():
@@ -322,7 +337,17 @@ def home():
     if request.method == 'POST':
         session['SONG_LIMIT'] = int(request.form['SONG_LIMIT'])
     check_token_validity()
-    return render_template('home.html', song_list = get_top_song_details(), SONG_LIMIT=session['SONG_LIMIT'])
+    user_id = get_user_details()[0]
+    found_user = users.query.filter_by(spotify_id=user_id).first()
+    if found_user:
+        session["user_id"] = found_user.spotify_id
+        user_name = found_user.name
+    else:
+        new_user = users(spotify_id = user_id, name=get_user_details()[1])
+        db.session.add(new_user)
+        db.session.commit()
+        user_name = new_user.name
+    return render_template('home.html', song_list = get_top_song_details(), SONG_LIMIT=session['SONG_LIMIT'], user_name=user_name)
     
 
 @app.route('/refresh_token')
